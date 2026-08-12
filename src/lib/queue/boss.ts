@@ -13,6 +13,7 @@ export const QUEUES = {
   ingest: "media.ingest",
   analyze: "media.analyze",
   intelligence: "media.intelligence",
+  publish: "post.publish",
 } as const;
 
 let boss: PgBoss | null = null;

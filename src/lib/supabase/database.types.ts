@@ -17,6 +17,15 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type MediaKind = "video" | "image" | "audio";
 export type MediaStatus = "ingesting" | "ready" | "analyzed" | "failed";
 export type AIProviderName = "ollama" | "openrouter" | "openai" | "anthropic" | "gemini";
+export type SocialPlatform =
+  | "facebook"
+  | "instagram"
+  | "youtube"
+  | "tiktok"
+  | "linkedin"
+  | "x";
+export type AccountStatus = "connected" | "expired" | "revoked" | "error";
+export type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "failed";
 
 type Timestamps = { created_at: string; updated_at: string };
 
@@ -127,6 +136,43 @@ type PromptTemplateRow = Timestamps & {
   description: string | null;
 };
 
+type SocialAccountRow = Timestamps & {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  platform: SocialPlatform;
+  external_account_id: string;
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  access_token_cipher: string | null;
+  refresh_token_cipher: string | null;
+  token_expires_at: string | null;
+  scopes: string[];
+  status: AccountStatus;
+  is_mock: boolean;
+  last_checked_at: string | null;
+};
+
+type PostRow = Timestamps & {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  social_account_id: string | null;
+  media_id: string | null;
+  platform: SocialPlatform;
+  caption: string;
+  hashtags: string[];
+  link: string | null;
+  status: PostStatus;
+  scheduled_for: string | null;
+  published_at: string | null;
+  external_post_id: string | null;
+  external_url: string | null;
+  error: string | null;
+  retry_count: number;
+};
+
 type TableShape<Row, Insert, Update> = {
   Row: Row;
   Insert: Insert;
@@ -194,6 +240,30 @@ export type Database = {
         },
         Partial<PromptTemplateRow>
       >;
+      social_accounts: TableShape<
+        SocialAccountRow,
+        Omit<SocialAccountRow, "id" | keyof Timestamps | "status" | "scopes" | "is_mock"> & {
+          id?: string;
+          status?: AccountStatus;
+          scopes?: string[];
+          is_mock?: boolean;
+        },
+        Partial<SocialAccountRow>
+      >;
+      posts: TableShape<
+        PostRow,
+        Omit<
+          PostRow,
+          "id" | keyof Timestamps | "status" | "hashtags" | "caption" | "retry_count"
+        > & {
+          id?: string;
+          status?: PostStatus;
+          hashtags?: string[];
+          caption?: string;
+          retry_count?: number;
+        },
+        Partial<PostRow>
+      >;
     };
     Views: Record<string, never>;
     Functions: {
@@ -206,6 +276,9 @@ export type Database = {
       media_kind: MediaKind;
       media_status: MediaStatus;
       ai_provider: AIProviderName;
+      social_platform: SocialPlatform;
+      account_status: AccountStatus;
+      post_status: PostStatus;
     };
     CompositeTypes: Record<string, never>;
   };

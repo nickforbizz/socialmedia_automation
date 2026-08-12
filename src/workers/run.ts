@@ -4,12 +4,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ingestFile, type IngestJob } from "@/features/media/ingest";
 import { analyzeMedia } from "@/features/media/analysis";
 import { generateAndStoreIntelligence } from "@/features/media/intelligence";
+import { publishPost } from "@/features/social/publishing";
+import { dispatchDuePosts } from "./scheduler";
 import { scanOnce } from "./scanner";
 
 const SCAN_INTERVAL_MS = 60_000;
+const SCHEDULE_INTERVAL_MS = 30_000;
 
 interface MediaJob {
   mediaId: string;
+}
+
+interface PublishJob {
+  postId: string;
 }
 
 /**
@@ -82,7 +89,19 @@ export async function runWorker(): Promise<void> {
     }
   });
 
-  logger.info("worker: subscribed to ingest, analyze, intelligence queues");
+  // 4) Publish due/queued posts to their platform.
+  await boss.work<PublishJob>(QUEUES.publish, { batchSize: 1 }, async ([job]) => {
+    if (!job) return;
+    try {
+      await publishPost(admin, job.data.postId);
+      logger.info("publish job done", { id: job.id, postId: job.data.postId });
+    } catch (err) {
+      logger.error("publish job failed", { id: job.id, postId: job.data.postId, message: (err as Error).message });
+      throw err;
+    }
+  });
+
+  logger.info("worker: subscribed to ingest, analyze, intelligence, publish queues");
 
   // Self-heal: re-enqueue analysis for any media that isn't analyzed yet — e.g.
   // items that failed in a previous run before an AI model was available. The
@@ -98,12 +117,21 @@ export async function runWorker(): Promise<void> {
   logger.info("worker: reconciled pending analysis", { count: pending?.length ?? 0 });
 
   await scanOnce();
-  const timer = setInterval(() => {
+  const scanTimer = setInterval(() => {
     scanOnce().catch((err) => logger.error("scan failed", { message: (err as Error).message }));
   }, SCAN_INTERVAL_MS);
 
+  // Poll for scheduled posts whose time has arrived and enqueue them.
+  await dispatchDuePosts(admin, boss);
+  const scheduleTimer = setInterval(() => {
+    dispatchDuePosts(admin, boss).catch((err) =>
+      logger.error("dispatch failed", { message: (err as Error).message }),
+    );
+  }, SCHEDULE_INTERVAL_MS);
+
   const shutdown = async () => {
-    clearInterval(timer);
+    clearInterval(scanTimer);
+    clearInterval(scheduleTimer);
     await stopBoss();
     logger.info("worker: stopped");
     process.exit(0);

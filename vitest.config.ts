@@ -17,6 +17,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // `server-only` throws unless resolved under the react-server condition;
+      // stub it to a no-op so server modules can be unit-tested.
+      "server-only": fileURLToPath(new URL("./src/test/empty.ts", import.meta.url)),
     },
   },
 });

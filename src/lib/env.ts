@@ -36,6 +36,20 @@ const serverSchema = z.object({
 
   MEDIA_WATCH_FOLDERS: z.string().default(""),
   MEDIA_STORAGE_BUCKET: z.string().default("media"),
+
+  // Base URL used to build OAuth redirect URIs.
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  // 32-byte base64 key for encrypting OAuth tokens at rest. Required only for
+  // social features; optional so Phase 1/2 boot without it.
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  // Allow the mock social provider (local dev end-to-end without real apps).
+  SOCIAL_ALLOW_MOCK: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  // Real platform OAuth client credentials are read on demand per platform via
+  // getPlatformOAuthConfig() (e.g. FACEBOOK_CLIENT_ID / FACEBOOK_CLIENT_SECRET),
+  // so they don't bloat this schema. See src/lib/social/config.ts.
 });
 
 function parse<T extends z.ZodTypeAny>(schema: T, source: Record<string, unknown>): z.infer<T> {
