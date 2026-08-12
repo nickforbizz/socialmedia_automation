@@ -3,6 +3,7 @@ import {
   LinkedInProvider,
   escapeLinkedInText,
   buildCommentary,
+  buildPostBody,
   authorUrn,
   postUrnToUrl,
 } from "./linkedin";
@@ -21,7 +22,20 @@ const config: PlatformOAuthConfig = {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("LinkedIn commentary helpers", () => {
+/** Route fetch calls by URL. Each route returns a Response (or throws if unmatched). */
+function routeFetch(routes: Array<[RegExp, () => Response]>) {
+  return vi.spyOn(global, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    const match = routes.find(([re]) => re.test(url));
+    if (!match) throw new Error(`Unexpected fetch: ${url}`);
+    return match[1]();
+  });
+}
+
+const okPost = () =>
+  new Response(null, { status: 201, headers: { "x-restli-id": "urn:li:share:9" } });
+
+describe("LinkedIn helpers", () => {
   it("escapes reserved characters but preserves hashtags", () => {
     expect(escapeLinkedInText("Great trip (really)!")).toBe("Great trip \\(really\\)!");
     expect(escapeLinkedInText("a_b*c~")).toBe("a\\_b\\*c\\~");
@@ -41,55 +55,109 @@ describe("LinkedIn commentary helpers", () => {
       "https://www.linkedin.com/feed/update/urn:li:share:99/",
     );
   });
+
+  it("attaches media content only when a URN is provided", () => {
+    expect(buildPostBody("urn:li:person:a", "hi")).not.toHaveProperty("content");
+    const withMedia = buildPostBody("urn:li:person:a", "hi", "urn:li:image:5");
+    expect(withMedia.content).toEqual({ media: { id: "urn:li:image:5" } });
+  });
 });
 
-describe("LinkedInProvider.publish", () => {
+describe("LinkedInProvider.publish — text", () => {
   const provider = new LinkedInProvider(config);
-  const args = {
-    accessToken: "tok",
-    externalAccountId: "member-1",
-    input: { caption: "Hello", hashtags: ["#hi"] },
-  };
+  const args = { accessToken: "tok", externalAccountId: "member-1", input: { caption: "Hello", hashtags: ["#hi"] } };
 
-  it("posts to the Posts API and returns the created URN + url", async () => {
-    const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(null, {
-        status: 201,
-        headers: { "x-restli-id": "urn:li:share:123" },
-      }),
-    );
-
+  it("creates a text post and returns the URN + url", async () => {
+    const fetchMock = routeFetch([[/\/rest\/posts$/, okPost]]);
     const result = await provider.publish(args);
-    expect(result.externalPostId).toBe("urn:li:share:123");
-    expect(result.externalUrl).toContain("urn:li:share:123");
-
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("https://api.linkedin.com/rest/posts");
-    const headers = (init as RequestInit).headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer tok");
-    expect(headers["LinkedIn-Version"]).toBeDefined();
-    const sentBody = JSON.parse((init as RequestInit).body as string);
-    expect(sentBody.author).toBe("urn:li:person:member-1");
-    expect(sentBody.lifecycleState).toBe("PUBLISHED");
+    expect(result.externalPostId).toBe("urn:li:share:9");
+    expect(result.externalUrl).toContain("urn:li:share:9");
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.author).toBe("urn:li:person:member-1");
+    expect(body.content).toBeUndefined();
   });
 
-  it("throws a non-retryable error on 4xx", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response("bad token", { status: 401 }),
-    );
-    await expect(provider.publish(args)).rejects.toMatchObject({
-      name: "SocialPublishError",
-      retryable: false,
-    });
-  });
-
-  it("marks 5xx as retryable", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(new Response("oops", { status: 503 }));
+  it("throws non-retryable on 4xx and retryable on 5xx", async () => {
+    routeFetch([[/\/rest\/posts$/, () => new Response("bad", { status: 401 })]]);
+    await expect(provider.publish(args)).rejects.toMatchObject({ retryable: false });
+    routeFetch([[/\/rest\/posts$/, () => new Response("oops", { status: 503 })]]);
     await expect(provider.publish(args)).rejects.toMatchObject({ retryable: true });
   });
 
   it("fails when no post id header is returned", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(new Response(null, { status: 201 }));
+    routeFetch([[/\/rest\/posts$/, () => new Response(null, { status: 201 })]]);
     await expect(provider.publish(args)).rejects.toBeInstanceOf(SocialPublishError);
+  });
+});
+
+describe("LinkedInProvider.publish — image", () => {
+  const provider = new LinkedInProvider(config);
+
+  it("uploads the image and attaches its URN to the post", async () => {
+    const fetchMock = routeFetch([
+      [/^https:\/\/storage\/signed/, () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })],
+      [
+        /\/rest\/images\?action=initializeUpload/,
+        () =>
+          new Response(
+            JSON.stringify({ value: { uploadUrl: "https://upload/img", image: "urn:li:image:1" } }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ],
+      [/^https:\/\/upload\/img/, () => new Response(null, { status: 201 })],
+      [/\/rest\/posts$/, okPost],
+    ]);
+
+    const result = await provider.publish({
+      accessToken: "tok",
+      externalAccountId: "m1",
+      input: { caption: "Pic", hashtags: [], mediaUrl: "https://storage/signed/img.jpg", mediaKind: "image" },
+    });
+
+    expect(result.externalPostId).toBe("urn:li:share:9");
+    const postCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/rest/posts"))!;
+    const body = JSON.parse((postCall[1] as RequestInit).body as string);
+    expect(body.content).toEqual({ media: { id: "urn:li:image:1" } });
+  });
+});
+
+describe("LinkedInProvider.publish — video", () => {
+  const provider = new LinkedInProvider(config);
+
+  it("uploads parts, finalizes with ETags, and attaches the video URN", async () => {
+    const fetchMock = routeFetch([
+      [/^https:\/\/storage\/signed/, () => new Response(new Uint8Array(10), { status: 200 })],
+      [
+        /\/rest\/videos\?action=initializeUpload/,
+        () =>
+          new Response(
+            JSON.stringify({
+              value: {
+                video: "urn:li:video:7",
+                uploadToken: "utok",
+                uploadInstructions: [{ uploadUrl: "https://upload/v0", firstByte: 0, lastByte: 9 }],
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ],
+      [/^https:\/\/upload\/v0/, () => new Response(null, { status: 200, headers: { etag: "et0" } })],
+      [/\/rest\/videos\?action=finalizeUpload/, () => new Response(null, { status: 200 })],
+      [/\/rest\/posts$/, okPost],
+    ]);
+
+    const result = await provider.publish({
+      accessToken: "tok",
+      externalAccountId: "m1",
+      input: { caption: "Clip", hashtags: [], mediaUrl: "https://storage/signed/v.mp4", mediaKind: "video" },
+    });
+
+    expect(result.externalPostId).toBe("urn:li:share:9");
+    const finalizeCall = fetchMock.mock.calls.find(([u]) => String(u).includes("finalizeUpload"))!;
+    const finalizeBody = JSON.parse((finalizeCall[1] as RequestInit).body as string);
+    expect(finalizeBody.finalizeUploadRequest.uploadedPartIds).toEqual(["et0"]);
+    const postCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/rest/posts"))!;
+    const body = JSON.parse((postCall[1] as RequestInit).body as string);
+    expect(body.content).toEqual({ media: { id: "urn:li:video:7" } });
   });
 });
