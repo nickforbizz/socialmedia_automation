@@ -173,12 +173,58 @@ type PostRow = Timestamps & {
   retry_count: number;
 };
 
+type MetricsBase = {
+  impressions: number;
+  reach: number;
+  views: number;
+  watch_time_sec: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  clicks: number;
+};
+
+type PostMetricsRow = MetricsBase & {
+  id: string;
+  post_id: string;
+  owner_id: string;
+  captured_at: string;
+};
+
+type AccountMetricsRow = {
+  id: string;
+  social_account_id: string;
+  owner_id: string;
+  captured_at: string;
+  followers: number;
+  following: number;
+  posts_count: number;
+};
+
+type PostMetricsLatestRow = MetricsBase & {
+  post_id: string;
+  owner_id: string;
+  captured_at: string;
+};
+
+type PendingConnectionRow = {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  platform: SocialPlatform;
+  options: Json;
+  created_at: string;
+};
+
 type TableShape<Row, Insert, Update> = {
   Row: Row;
   Insert: Insert;
   Update: Update;
   Relationships: [];
 };
+
+type ViewShape<Row> = { Row: Row; Relationships: [] };
 
 export type Database = {
   public: {
@@ -264,8 +310,25 @@ export type Database = {
         },
         Partial<PostRow>
       >;
+      post_metrics: TableShape<
+        PostMetricsRow,
+        Omit<PostMetricsRow, "id" | "captured_at"> & { id?: string; captured_at?: string },
+        Partial<PostMetricsRow>
+      >;
+      account_metrics: TableShape<
+        AccountMetricsRow,
+        Omit<AccountMetricsRow, "id" | "captured_at"> & { id?: string; captured_at?: string },
+        Partial<AccountMetricsRow>
+      >;
+      pending_connections: TableShape<
+        PendingConnectionRow,
+        Omit<PendingConnectionRow, "id" | "created_at"> & { id?: string; created_at?: string },
+        Partial<PendingConnectionRow>
+      >;
     };
-    Views: Record<string, never>;
+    Views: {
+      post_metrics_latest: ViewShape<PostMetricsLatestRow>;
+    };
     Functions: {
       match_media_analysis: {
         Args: { query_embedding: string; match_count?: number };

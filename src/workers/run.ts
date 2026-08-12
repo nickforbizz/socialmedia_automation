@@ -5,11 +5,13 @@ import { ingestFile, type IngestJob } from "@/features/media/ingest";
 import { analyzeMedia } from "@/features/media/analysis";
 import { generateAndStoreIntelligence } from "@/features/media/intelligence";
 import { publishPost } from "@/features/social/publishing";
+import { collectMetrics } from "@/features/analytics/collect";
 import { dispatchDuePosts } from "./scheduler";
 import { scanOnce } from "./scanner";
 
 const SCAN_INTERVAL_MS = 60_000;
 const SCHEDULE_INTERVAL_MS = 30_000;
+const METRICS_INTERVAL_MS = 300_000;
 
 interface MediaJob {
   mediaId: string;
@@ -129,9 +131,17 @@ export async function runWorker(): Promise<void> {
     );
   }, SCHEDULE_INTERVAL_MS);
 
+  // Periodically collect analytics snapshots for published posts + accounts.
+  const metricsTimer = setInterval(() => {
+    collectMetrics(admin).catch((err) =>
+      logger.error("metrics collect failed", { message: (err as Error).message }),
+    );
+  }, METRICS_INTERVAL_MS);
+
   const shutdown = async () => {
     clearInterval(scanTimer);
     clearInterval(scheduleTimer);
+    clearInterval(metricsTimer);
     await stopBoss();
     logger.info("worker: stopped");
     process.exit(0);

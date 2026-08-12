@@ -30,4 +30,20 @@ describe("MockSocialProvider", () => {
     expect(r.externalPostId).toMatch(/^mock_post_/);
     expect(r.externalUrl).toContain("example.com/mock/");
   });
+
+  it("does not require page selection for linkedin", () => {
+    expect(provider.requiresPageSelection).toBe(false);
+  });
+});
+
+describe("MockSocialProvider — facebook pages", () => {
+  const fb = new MockSocialProvider("facebook");
+
+  it("requires page selection and lists fake pages with tokens", async () => {
+    expect(fb.requiresPageSelection).toBe(true);
+    const pages = await fb.listPages();
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    expect(pages[0]!.id).toMatch(/^mock_page_facebook_/);
+    expect(pages[0]!.accessToken).toMatch(/^mock-page-token-/);
+  });
 });

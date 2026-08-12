@@ -23,6 +23,16 @@ export interface AccountInfo {
 
 export type ConnectResult = TokenSet & AccountInfo;
 
+/** A selectable publishing target returned by multi-page platforms (FB/IG). */
+export interface PageOption {
+  id: string;
+  name: string;
+  category?: string;
+  /** Page-scoped access token (kept server-side, encrypted before storage). */
+  accessToken: string;
+  expiresAt?: string;
+}
+
 export interface PublishInput {
   caption: string;
   hashtags: string[];
@@ -37,21 +47,64 @@ export interface PublishResult {
   externalUrl?: string;
 }
 
+export interface PostMetrics {
+  impressions: number;
+  reach: number;
+  views: number;
+  watchTimeSec: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  clicks: number;
+}
+
+export interface AccountMetrics {
+  followers: number;
+  following: number;
+  postsCount: number;
+}
+
 export interface SocialProvider {
   readonly platform: SocialPlatform;
   readonly isMock: boolean;
+  /**
+   * When true, one OAuth yields multiple publishing targets (e.g. Facebook
+   * Pages) and the connect flow must let the user pick. Such providers also
+   * implement `listPages`, and `exchangeCode` returns the *user* token used to
+   * enumerate pages rather than a final account.
+   */
+  readonly requiresPageSelection?: boolean;
   /** OAuth2 authorize URL to redirect the user to. */
   getAuthorizeUrl(params: { state: string; redirectUri: string }): string;
   /** Exchange the callback code for tokens + account identity. */
   exchangeCode(params: { code: string; redirectUri: string }): Promise<ConnectResult>;
   /** Refresh an expired access token. */
   refresh(refreshToken: string): Promise<TokenSet>;
+  /** List selectable pages/targets for the connecting user (FB/IG). */
+  listPages?(userAccessToken: string): Promise<PageOption[]>;
   /** Publish a post to the account. */
   publish(params: {
     accessToken: string;
     externalAccountId: string;
     input: PublishInput;
   }): Promise<PublishResult>;
+  /**
+   * Fetch current metrics for a published post (platform insights API).
+   * Optional: providers that don't implement it are simply skipped by the
+   * collector. Real platforms are a seam; the mock provider synthesizes data.
+   */
+  fetchPostMetrics?(ctx: {
+    accessToken: string;
+    externalPostId: string;
+    publishedAt?: string | null;
+    mediaKind?: "video" | "image" | "audio" | null;
+  }): Promise<PostMetrics | null>;
+  /** Fetch current account/follower metrics. Optional (see fetchPostMetrics). */
+  fetchAccountMetrics?(ctx: {
+    accessToken: string;
+    externalAccountId: string;
+  }): Promise<AccountMetrics | null>;
 }
 
 export class SocialNotConfiguredError extends Error {

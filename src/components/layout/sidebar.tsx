@@ -19,7 +19,7 @@ const NAV = [
   { href: "/media", label: "Media Library", icon: Film, ready: true },
   { href: "/planner", label: "Content Planner", icon: Sparkles, ready: false },
   { href: "/calendar", label: "Scheduler", icon: CalendarDays, ready: true },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, ready: false },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, ready: true },
   { href: "/competitors", label: "Competitors", icon: Users, ready: false },
   { href: "/settings", label: "Settings", icon: Settings, ready: true },
 ] as const;

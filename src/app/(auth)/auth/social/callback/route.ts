@@ -5,7 +5,7 @@ import { getServerEnv } from "@/lib/env";
 import { isSocialPlatform } from "@/lib/social/platforms";
 import { getSocialProvider } from "@/lib/social/registry";
 import { verifyState } from "@/lib/social/oauth-state";
-import { upsertConnectedAccount } from "@/features/social/accounts";
+import { upsertConnectedAccount, savePendingPages } from "@/features/social/accounts";
 import { STATE_COOKIE } from "@/app/api/social/[platform]/connect/route";
 import { logger } from "@/lib/logger";
 
@@ -46,6 +46,24 @@ export async function GET(request: NextRequest) {
     const provider = getSocialProvider(state.platform);
     const redirectUri = `${env.APP_URL}/auth/social/callback`;
     const result = await provider.exchangeCode({ code, redirectUri });
+    cookieStore.delete(STATE_COOKIE);
+
+    // Multi-page platforms (Facebook/Instagram): stash the pages and let the
+    // user choose which to connect, rather than assuming one account.
+    if (provider.requiresPageSelection && provider.listPages) {
+      const pages = await provider.listPages(result.accessToken);
+      if (pages.length === 0) return fail("no_pages");
+      await savePendingPages(supabase, {
+        ownerId: user.id,
+        projectId: state.projectId,
+        platform: state.platform,
+        pages,
+      });
+      const select = new URL("/settings/pages", request.url);
+      select.searchParams.set("platform", state.platform);
+      return NextResponse.redirect(select);
+    }
+
     await upsertConnectedAccount(supabase, {
       ownerId: user.id,
       projectId: state.projectId,
@@ -53,7 +71,6 @@ export async function GET(request: NextRequest) {
       isMock: provider.isMock,
       result,
     });
-    cookieStore.delete(STATE_COOKIE);
     settings.searchParams.set("connected", state.platform);
     return NextResponse.redirect(settings);
   } catch (err) {

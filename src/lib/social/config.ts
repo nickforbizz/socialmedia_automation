@@ -23,13 +23,20 @@ const ENDPOINTS: Record<
   facebook: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
     tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
-    scopes: ["pages_manage_posts", "pages_read_engagement"],
+    scopes: ["public_profile", "pages_show_list", "pages_manage_posts", "pages_read_engagement"],
     userInfoUrl: "https://graph.facebook.com/v21.0/me",
   },
   instagram: {
     authorizeUrl: "https://www.facebook.com/v21.0/dialog/oauth",
     tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
-    scopes: ["instagram_basic", "instagram_content_publish"],
+    // IG publishing runs through linked Pages, so Page scopes are required too.
+    scopes: [
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_show_list",
+      "pages_read_engagement",
+      "business_management",
+    ],
     userInfoUrl: "https://graph.facebook.com/v21.0/me",
   },
   youtube: {
