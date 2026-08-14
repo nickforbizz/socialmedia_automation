@@ -26,6 +26,7 @@ export type SocialPlatform =
   | "x";
 export type AccountStatus = "connected" | "expired" | "revoked" | "error";
 export type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "failed";
+export type CompetitorMediaType = "video" | "image" | "carousel" | "text";
 
 type Timestamps = { created_at: string; updated_at: string };
 
@@ -217,6 +218,36 @@ type PendingConnectionRow = {
   created_at: string;
 };
 
+type CompetitorRow = Timestamps & {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  platform: SocialPlatform;
+  handle: string;
+  display_name: string | null;
+  notes: string | null;
+  is_mock: boolean;
+  last_synced_at: string | null;
+};
+
+type CompetitorPostRow = {
+  id: string;
+  competitor_id: string;
+  owner_id: string;
+  external_post_id: string;
+  posted_at: string;
+  caption: string | null;
+  hashtags: string[];
+  topics: string[];
+  media_type: CompetitorMediaType;
+  video_length_sec: number | null;
+  likes: number;
+  comments: number;
+  shares: number;
+  permalink: string | null;
+  created_at: string;
+};
+
 type TableShape<Row, Insert, Update> = {
   Row: Row;
   Insert: Insert;
@@ -324,6 +355,31 @@ export type Database = {
         PendingConnectionRow,
         Omit<PendingConnectionRow, "id" | "created_at"> & { id?: string; created_at?: string },
         Partial<PendingConnectionRow>
+      >;
+      competitors: TableShape<
+        CompetitorRow,
+        Omit<CompetitorRow, "id" | keyof Timestamps | "is_mock"> & {
+          id?: string;
+          is_mock?: boolean;
+        },
+        Partial<CompetitorRow>
+      >;
+      competitor_posts: TableShape<
+        CompetitorPostRow,
+        Omit<
+          CompetitorPostRow,
+          "id" | "created_at" | "hashtags" | "topics" | "media_type" | "likes" | "comments" | "shares"
+        > & {
+          id?: string;
+          created_at?: string;
+          hashtags?: string[];
+          topics?: string[];
+          media_type?: CompetitorMediaType;
+          likes?: number;
+          comments?: number;
+          shares?: number;
+        },
+        Partial<CompetitorPostRow>
       >;
     };
     Views: {

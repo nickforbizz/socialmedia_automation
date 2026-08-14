@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { SocialPlatform } from "@/lib/supabase/database.types";
 import type {
   AccountMetrics,
+  CompetitorObservedPost,
   ConnectResult,
   PageOption,
   PostMetrics,
@@ -10,6 +11,7 @@ import type {
   TokenSet,
 } from "@/lib/social/types";
 import { syntheticAccountMetrics, syntheticPostMetrics } from "@/lib/social/mock-metrics";
+import { syntheticCompetitorPosts } from "@/lib/social/mock-competitors";
 
 function ageHoursSince(iso?: string | null): number {
   if (!iso) return 1;
@@ -85,6 +87,10 @@ export class MockSocialProvider implements SocialProvider {
 
   async fetchAccountMetrics(ctx: { externalAccountId: string }): Promise<AccountMetrics> {
     return syntheticAccountMetrics(ctx.externalAccountId, 24);
+  }
+
+  async fetchCompetitorPosts(ctx: { handle: string; limit?: number }): Promise<CompetitorObservedPost[]> {
+    return syntheticCompetitorPosts(ctx.handle, ctx.limit ?? 24);
   }
 }
 

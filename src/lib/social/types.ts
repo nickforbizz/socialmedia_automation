@@ -65,6 +65,21 @@ export interface AccountMetrics {
   postsCount: number;
 }
 
+/** A public post observed on a competitor's account (for inspiration/analysis). */
+export interface CompetitorObservedPost {
+  externalPostId: string;
+  postedAt: string;
+  caption: string;
+  hashtags: string[];
+  topics: string[];
+  mediaType: "video" | "image" | "carousel" | "text";
+  videoLengthSec?: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  permalink?: string;
+}
+
 export interface SocialProvider {
   readonly platform: SocialPlatform;
   readonly isMock: boolean;
@@ -105,6 +120,16 @@ export interface SocialProvider {
     accessToken: string;
     externalAccountId: string;
   }): Promise<AccountMetrics | null>;
+  /**
+   * Fetch recent public posts for a competitor handle (for inspiration and
+   * gap analysis). Optional: real platforms are a seam (IG Business Discovery,
+   * YouTube Data API, etc.); the mock synthesizes realistic data.
+   */
+  fetchCompetitorPosts?(ctx: {
+    handle: string;
+    accessToken?: string;
+    limit?: number;
+  }): Promise<CompetitorObservedPost[]>;
 }
 
 export class SocialNotConfiguredError extends Error {

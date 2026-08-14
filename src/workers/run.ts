@@ -6,6 +6,7 @@ import { analyzeMedia } from "@/features/media/analysis";
 import { generateAndStoreIntelligence } from "@/features/media/intelligence";
 import { publishPost } from "@/features/social/publishing";
 import { collectMetrics } from "@/features/analytics/collect";
+import { syncAllCompetitors } from "@/features/competitors/collect";
 import { dispatchDuePosts } from "./scheduler";
 import { scanOnce } from "./scanner";
 
@@ -131,10 +132,13 @@ export async function runWorker(): Promise<void> {
     );
   }, SCHEDULE_INTERVAL_MS);
 
-  // Periodically collect analytics snapshots for published posts + accounts.
+  // Periodically collect analytics snapshots and sync competitors.
   const metricsTimer = setInterval(() => {
     collectMetrics(admin).catch((err) =>
       logger.error("metrics collect failed", { message: (err as Error).message }),
+    );
+    syncAllCompetitors(admin).catch((err) =>
+      logger.error("competitor sync failed", { message: (err as Error).message }),
     );
   }, METRICS_INTERVAL_MS);
 
