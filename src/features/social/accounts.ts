@@ -6,7 +6,22 @@ import { encryptToken, decryptToken } from "@/lib/crypto/tokens";
 import { getSocialProvider } from "@/lib/social/registry";
 import { logger } from "@/lib/logger";
 import type { Database, SocialPlatform } from "@/lib/supabase/database.types";
-import type { ConnectResult } from "@/lib/social/types";
+import type { ConnectResult, PageOption } from "@/lib/social/types";
+
+/** Page option as stored in pending_connections.options (token encrypted). */
+interface StoredPage {
+  id: string;
+  name: string;
+  category: string | null;
+  token_cipher: string;
+  expires_at: string | null;
+}
+/** Page option safe to show the user (no token). */
+export interface SelectablePage {
+  id: string;
+  name: string;
+  category?: string;
+}
 
 type DB = SupabaseClient<Database>;
 
@@ -57,6 +72,101 @@ export async function getOrCreateDefaultProject(db: DB, ownerId: string): Promis
     .single();
   if (error || !created) throw new SocialAccountError(`Could not create project: ${error?.message}`);
   return created.id;
+}
+
+/**
+ * Stash the pages returned by a multi-page platform (FB/IG) between the OAuth
+ * callback and the user's selection. Page tokens are encrypted before storage.
+ */
+export async function savePendingPages(
+  db: DB,
+  params: { ownerId: string; projectId: string; platform: SocialPlatform; pages: PageOption[] },
+): Promise<void> {
+  const key = requireKey();
+  const options: StoredPage[] = params.pages.map((p) => ({
+    id: p.id,
+    name: p.name,
+    category: p.category ?? null,
+    token_cipher: encryptToken(p.accessToken, key),
+    expires_at: p.expiresAt ?? null,
+  }));
+  const { error } = await db.from("pending_connections").upsert(
+    {
+      owner_id: params.ownerId,
+      project_id: params.projectId,
+      platform: params.platform,
+      options: options as unknown as Database["public"]["Tables"]["pending_connections"]["Row"]["options"],
+    },
+    { onConflict: "owner_id,platform" },
+  );
+  if (error) throw new SocialAccountError(`Failed to save pending pages: ${error.message}`);
+}
+
+/** Pages awaiting selection for a platform (no tokens exposed). */
+export async function getPendingPages(
+  db: DB,
+  platform: SocialPlatform,
+): Promise<{ projectId: string; pages: SelectablePage[] } | null> {
+  const { data } = await db
+    .from("pending_connections")
+    .select("project_id, options")
+    .eq("platform", platform)
+    .maybeSingle();
+  if (!data) return null;
+  const stored = (data.options as unknown as StoredPage[]) ?? [];
+  return {
+    projectId: data.project_id,
+    pages: stored.map((o) => ({ id: o.id, name: o.name, category: o.category ?? undefined })),
+  };
+}
+
+/**
+ * Connect one chosen page: decrypt its token, create the account, and remove it
+ * from the pending set (deleting the pending row when none remain). Lets the
+ * user connect several pages one at a time.
+ */
+export async function connectPendingPage(
+  db: DB,
+  params: { ownerId: string; platform: SocialPlatform; pageId: string; isMock: boolean },
+): Promise<string> {
+  const key = requireKey();
+  const { data: pending, error } = await db
+    .from("pending_connections")
+    .select("id, project_id, options")
+    .eq("platform", params.platform)
+    .maybeSingle();
+  if (error || !pending) throw new SocialAccountError("No pending connection found. Start again.");
+
+  const stored = (pending.options as unknown as StoredPage[]) ?? [];
+  const page = stored.find((o) => o.id === params.pageId);
+  if (!page) throw new SocialAccountError("Selected page is no longer available.");
+
+  const accountId = await upsertConnectedAccount(db, {
+    ownerId: params.ownerId,
+    projectId: pending.project_id,
+    platform: params.platform,
+    isMock: params.isMock,
+    result: {
+      accessToken: decryptToken(page.token_cipher, key),
+      expiresAt: page.expires_at ?? undefined,
+      externalAccountId: page.id,
+      displayName: page.name,
+      username: page.name,
+    },
+  });
+
+  const remaining = stored.filter((o) => o.id !== params.pageId);
+  if (remaining.length === 0) {
+    await db.from("pending_connections").delete().eq("id", pending.id);
+  } else {
+    await db
+      .from("pending_connections")
+      .update({
+        options: remaining as unknown as Database["public"]["Tables"]["pending_connections"]["Row"]["options"],
+      })
+      .eq("id", pending.id);
+  }
+  return accountId;
 }
 
 /** Persist a freshly connected account with encrypted tokens. */

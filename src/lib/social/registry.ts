@@ -5,6 +5,8 @@ import type { SocialPlatform } from "@/lib/supabase/database.types";
 import { getPlatformOAuthConfig } from "@/lib/social/config";
 import { GenericOAuth2Provider } from "@/lib/social/providers/oauth2";
 import { LinkedInProvider } from "@/lib/social/providers/linkedin";
+import { FacebookProvider } from "@/lib/social/providers/facebook";
+import { InstagramProvider } from "@/lib/social/providers/instagram";
 import { MockSocialProvider } from "@/lib/social/providers/mock";
 import { SocialNotConfiguredError, type SocialProvider } from "@/lib/social/types";
 
@@ -21,6 +23,8 @@ export function getSocialProvider(platform: SocialPlatform): SocialProvider {
     // Concrete providers implement platform-specific publishing; the generic
     // provider handles OAuth but leaves publish() as a seam.
     if (platform === "linkedin") return new LinkedInProvider(config);
+    if (platform === "facebook") return new FacebookProvider(config);
+    if (platform === "instagram") return new InstagramProvider(config);
     return new GenericOAuth2Provider(config);
   }
 

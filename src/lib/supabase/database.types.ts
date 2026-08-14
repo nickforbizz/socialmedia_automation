@@ -26,6 +26,7 @@ export type SocialPlatform =
   | "x";
 export type AccountStatus = "connected" | "expired" | "revoked" | "error";
 export type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "failed";
+export type CompetitorMediaType = "video" | "image" | "carousel" | "text";
 
 type Timestamps = { created_at: string; updated_at: string };
 
@@ -171,6 +172,99 @@ type PostRow = Timestamps & {
   external_url: string | null;
   error: string | null;
   retry_count: number;
+  native_scheduled: boolean;
+};
+
+export type AIMessageRole = "user" | "assistant" | "system";
+
+type AIConversationRow = Timestamps & {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  title: string | null;
+};
+
+type AIMessageRow = {
+  id: string;
+  conversation_id: string;
+  owner_id: string;
+  role: AIMessageRole;
+  content: string;
+  created_at: string;
+};
+
+type MetricsBase = {
+  impressions: number;
+  reach: number;
+  views: number;
+  watch_time_sec: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  clicks: number;
+};
+
+type PostMetricsRow = MetricsBase & {
+  id: string;
+  post_id: string;
+  owner_id: string;
+  captured_at: string;
+};
+
+type AccountMetricsRow = {
+  id: string;
+  social_account_id: string;
+  owner_id: string;
+  captured_at: string;
+  followers: number;
+  following: number;
+  posts_count: number;
+};
+
+type PostMetricsLatestRow = MetricsBase & {
+  post_id: string;
+  owner_id: string;
+  captured_at: string;
+};
+
+type PendingConnectionRow = {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  platform: SocialPlatform;
+  options: Json;
+  created_at: string;
+};
+
+type CompetitorRow = Timestamps & {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  platform: SocialPlatform;
+  handle: string;
+  display_name: string | null;
+  notes: string | null;
+  is_mock: boolean;
+  last_synced_at: string | null;
+};
+
+type CompetitorPostRow = {
+  id: string;
+  competitor_id: string;
+  owner_id: string;
+  external_post_id: string;
+  posted_at: string;
+  caption: string | null;
+  hashtags: string[];
+  topics: string[];
+  media_type: CompetitorMediaType;
+  video_length_sec: number | null;
+  likes: number;
+  comments: number;
+  shares: number;
+  permalink: string | null;
+  created_at: string;
 };
 
 type TableShape<Row, Insert, Update> = {
@@ -179,6 +273,8 @@ type TableShape<Row, Insert, Update> = {
   Update: Update;
   Relationships: [];
 };
+
+type ViewShape<Row> = { Row: Row; Relationships: [] };
 
 export type Database = {
   public: {
@@ -254,18 +350,77 @@ export type Database = {
         PostRow,
         Omit<
           PostRow,
-          "id" | keyof Timestamps | "status" | "hashtags" | "caption" | "retry_count"
+          | "id"
+          | keyof Timestamps
+          | "status"
+          | "hashtags"
+          | "caption"
+          | "retry_count"
+          | "native_scheduled"
         > & {
           id?: string;
           status?: PostStatus;
           hashtags?: string[];
           caption?: string;
           retry_count?: number;
+          native_scheduled?: boolean;
         },
         Partial<PostRow>
       >;
+      post_metrics: TableShape<
+        PostMetricsRow,
+        Omit<PostMetricsRow, "id" | "captured_at"> & { id?: string; captured_at?: string },
+        Partial<PostMetricsRow>
+      >;
+      account_metrics: TableShape<
+        AccountMetricsRow,
+        Omit<AccountMetricsRow, "id" | "captured_at"> & { id?: string; captured_at?: string },
+        Partial<AccountMetricsRow>
+      >;
+      pending_connections: TableShape<
+        PendingConnectionRow,
+        Omit<PendingConnectionRow, "id" | "created_at"> & { id?: string; created_at?: string },
+        Partial<PendingConnectionRow>
+      >;
+      competitors: TableShape<
+        CompetitorRow,
+        Omit<CompetitorRow, "id" | keyof Timestamps | "is_mock"> & {
+          id?: string;
+          is_mock?: boolean;
+        },
+        Partial<CompetitorRow>
+      >;
+      competitor_posts: TableShape<
+        CompetitorPostRow,
+        Omit<
+          CompetitorPostRow,
+          "id" | "created_at" | "hashtags" | "topics" | "media_type" | "likes" | "comments" | "shares"
+        > & {
+          id?: string;
+          created_at?: string;
+          hashtags?: string[];
+          topics?: string[];
+          media_type?: CompetitorMediaType;
+          likes?: number;
+          comments?: number;
+          shares?: number;
+        },
+        Partial<CompetitorPostRow>
+      >;
+      ai_conversations: TableShape<
+        AIConversationRow,
+        Omit<AIConversationRow, "id" | keyof Timestamps> & { id?: string },
+        Partial<AIConversationRow>
+      >;
+      ai_messages: TableShape<
+        AIMessageRow,
+        Omit<AIMessageRow, "id" | "created_at"> & { id?: string; created_at?: string },
+        Partial<AIMessageRow>
+      >;
     };
-    Views: Record<string, never>;
+    Views: {
+      post_metrics_latest: ViewShape<PostMetricsLatestRow>;
+    };
     Functions: {
       match_media_analysis: {
         Args: { query_embedding: string; match_count?: number };

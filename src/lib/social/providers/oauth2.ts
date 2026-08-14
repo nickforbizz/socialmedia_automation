@@ -17,7 +17,7 @@ import type { PlatformOAuthConfig } from "@/lib/social/config";
  */
 export class GenericOAuth2Provider implements SocialProvider {
   readonly isMock = false;
-  constructor(private readonly config: PlatformOAuthConfig) {}
+  constructor(protected readonly config: PlatformOAuthConfig) {}
 
   get platform() {
     return this.config.platform;

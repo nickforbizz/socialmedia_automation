@@ -155,6 +155,12 @@ export function ComposeForm({
               onChange={(e) => setScheduledFor(e.target.value)}
             />
             {suggestion && <p className="text-xs text-muted-foreground">{suggestion}</p>}
+            {selectedAccount?.platform === "facebook" && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" name="nativeSchedule" value="on" className="h-3.5 w-3.5" />
+                Let Facebook hold the schedule (more reliable; text/link posts, ≥10 min ahead)
+              </label>
+            )}
           </div>
 
           {state.error && <p className="text-sm text-destructive">{state.error}</p>}
