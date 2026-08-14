@@ -20,6 +20,7 @@ export const GRAPH = "https://graph.facebook.com/v21.0";
 
 export class FacebookProvider extends GenericOAuth2Provider {
   readonly requiresPageSelection = true;
+  readonly supportsNativeScheduling = true;
 
   protected async graphGet<T>(path: string, params: Record<string, string>): Promise<T> {
     const url = new URL(`${GRAPH}${path}`);
@@ -163,6 +164,41 @@ export class FacebookProvider extends GenericOAuth2Provider {
       );
     }
     const json = (await res.json()) as { id?: string; post_id?: string };
+    const id = json.post_id ?? json.id;
+    if (!id) throw new SocialPublishError("facebook", "Facebook did not return a post id.", false);
+    return { externalPostId: id, externalUrl: `https://www.facebook.com/${id}` };
+  }
+
+  /**
+   * Schedule a post on Facebook's own scheduler (published=false +
+   * scheduled_publish_time). Facebook requires the time to be 10 minutes to
+   * 30 days out. Returns the unpublished post id; Facebook publishes it.
+   */
+  async scheduleNative({
+    accessToken,
+    externalAccountId,
+    input,
+    scheduledFor,
+  }: {
+    accessToken: string;
+    externalAccountId: string;
+    input: PublishInput;
+    scheduledFor: Date;
+  }): Promise<PublishResult> {
+    const unix = Math.floor(scheduledFor.getTime() / 1000);
+    const message = [input.caption, input.hashtags.join(" ")].filter(Boolean).join("\n\n");
+    const params: Record<string, string> = {
+      access_token: accessToken,
+      message,
+      published: "false",
+      scheduled_publish_time: String(unix),
+    };
+    if (input.link) params.link = input.link;
+
+    const json = await this.graphPost<{ id?: string; post_id?: string }>(
+      `/${externalAccountId}/feed`,
+      params,
+    );
     const id = json.post_id ?? json.id;
     if (!id) throw new SocialPublishError("facebook", "Facebook did not return a post id.", false);
     return { externalPostId: id, externalUrl: `https://www.facebook.com/${id}` };

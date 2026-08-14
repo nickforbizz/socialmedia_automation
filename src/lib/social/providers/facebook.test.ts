@@ -98,6 +98,22 @@ describe("FacebookProvider", () => {
       provider.publish({ accessToken: "pt1", externalAccountId: "p1", input: { caption: "x", hashtags: [] } }),
     ).rejects.toMatchObject({ name: "SocialPublishError", retryable: false });
   });
+
+  it("supports native scheduling and sends published=false + scheduled_publish_time", async () => {
+    expect(provider.supportsNativeScheduling).toBe(true);
+    const fetchMock = routeFetch([[/\/p1\/feed/, () => json({ id: "p1_sched" })]]);
+    const when = new Date(Date.now() + 3600_000);
+    const result = await provider.scheduleNative({
+      accessToken: "pt1",
+      externalAccountId: "p1",
+      input: { caption: "Later", hashtags: ["#soon"] },
+      scheduledFor: when,
+    });
+    expect(result.externalPostId).toBe("p1_sched");
+    const body = (fetchMock.mock.calls[0]![1] as RequestInit).body as URLSearchParams;
+    expect(body.get("published")).toBe("false");
+    expect(body.get("scheduled_publish_time")).toBe(String(Math.floor(when.getTime() / 1000)));
+  });
 });
 
 describe("FacebookProvider publish id fallback", () => {

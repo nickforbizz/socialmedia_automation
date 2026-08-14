@@ -3,9 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { getOrCreateDefaultProject } from "@/features/social/accounts";
+import { getOrCreateDefaultProject, getAccessTokenForAccount } from "@/features/social/accounts";
+import { getSocialProvider } from "@/lib/social/registry";
 import { logger } from "@/lib/logger";
 import type { Database } from "@/lib/supabase/database.types";
+
+const NATIVE_MIN_LEAD_MS = 10 * 60 * 1000; // Facebook requires ≥10 min ahead.
 
 type PostUpdate = Database["public"]["Tables"]["posts"]["Update"];
 
@@ -21,6 +24,7 @@ const composeSchema = z.object({
   mediaId: z.string().uuid().optional().or(z.literal("")),
   scheduledFor: z.string().optional().or(z.literal("")),
   intent: z.enum(["draft", "schedule", "publish_now"]),
+  nativeSchedule: z.string().optional(), // "on" when the checkbox is ticked
 });
 
 function parseHashtags(raw: string): string[] {
@@ -47,6 +51,7 @@ export async function composePostAction(
     mediaId: formData.get("mediaId") ?? "",
     scheduledFor: formData.get("scheduledFor") ?? "",
     intent: formData.get("intent"),
+    nativeSchedule: formData.get("nativeSchedule") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   const input = parsed.data;
@@ -79,6 +84,42 @@ export async function composePostAction(
     scheduledFor = when.toISOString();
   }
 
+  const hashtags = parseHashtags(input.hashtags);
+
+  // Optionally hand a scheduled post to the platform's native scheduler
+  // (currently text/link posts on supporting platforms, e.g. Facebook).
+  let nativeScheduled = false;
+  let externalPostId: string | null = null;
+  let externalUrl: string | null = null;
+
+  if (input.intent === "schedule" && input.nativeSchedule === "on" && scheduledFor) {
+    const provider = getSocialProvider(account.platform);
+    if (provider.supportsNativeScheduling && provider.scheduleNative) {
+      if (input.mediaId) {
+        return { error: "Native scheduling currently supports text/link posts; media uses in-app scheduling." };
+      }
+      const when = new Date(scheduledFor);
+      if (when.getTime() < Date.now() + NATIVE_MIN_LEAD_MS) {
+        return { error: "Native scheduling needs a time at least 10 minutes from now." };
+      }
+      try {
+        const { accessToken, externalAccountId } = await getAccessTokenForAccount(supabase, account.id);
+        const result = await provider.scheduleNative({
+          accessToken,
+          externalAccountId,
+          input: { caption: input.caption, hashtags },
+          scheduledFor: when,
+        });
+        nativeScheduled = true;
+        externalPostId = result.externalPostId;
+        externalUrl = result.externalUrl ?? null;
+      } catch (err) {
+        return { error: `Native scheduling failed: ${(err as Error).message}` };
+      }
+    }
+    // If the platform doesn't support it, silently fall back to in-app scheduling.
+  }
+
   try {
     const projectId = await getOrCreateDefaultProject(supabase, user.id);
     const { error } = await supabase.from("posts").insert({
@@ -88,13 +129,14 @@ export async function composePostAction(
       media_id: input.mediaId ? input.mediaId : null,
       platform: account.platform,
       caption: input.caption,
-      hashtags: parseHashtags(input.hashtags),
+      hashtags,
       link: null,
       status,
       scheduled_for: scheduledFor,
+      native_scheduled: nativeScheduled,
       published_at: null,
-      external_post_id: null,
-      external_url: null,
+      external_post_id: externalPostId,
+      external_url: externalUrl,
       error: null,
     });
     if (error) return { error: error.message };

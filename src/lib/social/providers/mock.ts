@@ -32,6 +32,19 @@ export class MockSocialProvider implements SocialProvider {
     return this.platform === "facebook" || this.platform === "instagram";
   }
 
+  /** Facebook supports native scheduling; mirror that in the mock. */
+  get supportsNativeScheduling(): boolean {
+    return this.platform === "facebook";
+  }
+
+  async scheduleNative(): Promise<PublishResult> {
+    const id = randomUUID();
+    return {
+      externalPostId: `mock_scheduled_${id}`,
+      externalUrl: `https://example.com/mock/scheduled/${id}`,
+    };
+  }
+
   async listPages(): Promise<PageOption[]> {
     const names = ["Kilifi Travel", "Mombasa Eats", "Watamu Dives"];
     return names.map((name, i) => ({

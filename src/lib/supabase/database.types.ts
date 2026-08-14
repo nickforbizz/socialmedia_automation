@@ -172,6 +172,25 @@ type PostRow = Timestamps & {
   external_url: string | null;
   error: string | null;
   retry_count: number;
+  native_scheduled: boolean;
+};
+
+export type AIMessageRole = "user" | "assistant" | "system";
+
+type AIConversationRow = Timestamps & {
+  id: string;
+  owner_id: string;
+  project_id: string;
+  title: string | null;
+};
+
+type AIMessageRow = {
+  id: string;
+  conversation_id: string;
+  owner_id: string;
+  role: AIMessageRole;
+  content: string;
+  created_at: string;
 };
 
 type MetricsBase = {
@@ -331,13 +350,20 @@ export type Database = {
         PostRow,
         Omit<
           PostRow,
-          "id" | keyof Timestamps | "status" | "hashtags" | "caption" | "retry_count"
+          | "id"
+          | keyof Timestamps
+          | "status"
+          | "hashtags"
+          | "caption"
+          | "retry_count"
+          | "native_scheduled"
         > & {
           id?: string;
           status?: PostStatus;
           hashtags?: string[];
           caption?: string;
           retry_count?: number;
+          native_scheduled?: boolean;
         },
         Partial<PostRow>
       >;
@@ -380,6 +406,16 @@ export type Database = {
           shares?: number;
         },
         Partial<CompetitorPostRow>
+      >;
+      ai_conversations: TableShape<
+        AIConversationRow,
+        Omit<AIConversationRow, "id" | keyof Timestamps> & { id?: string },
+        Partial<AIConversationRow>
+      >;
+      ai_messages: TableShape<
+        AIMessageRow,
+        Omit<AIMessageRow, "id" | "created_at"> & { id?: string; created_at?: string },
+        Partial<AIMessageRow>
       >;
     };
     Views: {

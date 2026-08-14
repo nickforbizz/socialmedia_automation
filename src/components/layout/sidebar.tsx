@@ -10,6 +10,7 @@ import {
   Users,
   Settings,
   Sparkles,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +18,8 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, ready: true },
   { href: "/media", label: "Media Library", icon: Film, ready: true },
-  { href: "/planner", label: "Content Planner", icon: Sparkles, ready: false },
+  { href: "/planner", label: "Content Planner", icon: Sparkles, ready: true },
+  { href: "/assistant", label: "AI Assistant", icon: Bot, ready: true },
   { href: "/calendar", label: "Scheduler", icon: CalendarDays, ready: true },
   { href: "/analytics", label: "Analytics", icon: BarChart3, ready: true },
   { href: "/competitors", label: "Competitors", icon: Users, ready: true },

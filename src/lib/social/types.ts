@@ -90,6 +90,12 @@ export interface SocialProvider {
    * enumerate pages rather than a final account.
    */
   readonly requiresPageSelection?: boolean;
+  /**
+   * When true, the platform can hold a scheduled post itself (e.g. Facebook's
+   * `scheduled_publish_time`) via `scheduleNative`, so our worker doesn't need
+   * to fire it. Reduces the risk of a missed publish window.
+   */
+  readonly supportsNativeScheduling?: boolean;
   /** OAuth2 authorize URL to redirect the user to. */
   getAuthorizeUrl(params: { state: string; redirectUri: string }): string;
   /** Exchange the callback code for tokens + account identity. */
@@ -98,6 +104,13 @@ export interface SocialProvider {
   refresh(refreshToken: string): Promise<TokenSet>;
   /** List selectable pages/targets for the connecting user (FB/IG). */
   listPages?(userAccessToken: string): Promise<PageOption[]>;
+  /** Hand a scheduled post to the platform's own scheduler. */
+  scheduleNative?(params: {
+    accessToken: string;
+    externalAccountId: string;
+    input: PublishInput;
+    scheduledFor: Date;
+  }): Promise<PublishResult>;
   /** Publish a post to the account. */
   publish(params: {
     accessToken: string;
